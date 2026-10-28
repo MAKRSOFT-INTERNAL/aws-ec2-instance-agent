@@ -125,6 +125,168 @@ resource "aws_iam_instance_profile" "runner" {
   }
 }
 
+resource "aws_s3_bucket" "objects" {
+  bucket        = var.object_bucket_name
+  force_destroy = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  tags = {
+    Name      = var.object_bucket_name
+    ManagedBy = "terraform"
+    Purpose   = "application-objects"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "objects" {
+  bucket                  = aws_s3_bucket.objects.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "objects" {
+  bucket = aws_s3_bucket.objects.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "objects" {
+  bucket = aws_s3_bucket.objects.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "objects_tls_only" {
+  bucket = aws_s3_bucket.objects.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyInsecureTransport"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.objects.arn,
+        "${aws_s3_bucket.objects.arn}/*"
+      ]
+      Condition = {
+        Bool = {
+          "aws:SecureTransport" = "false"
+        }
+      }
+    }]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.objects]
+}
+
+resource "aws_iam_role" "agent_instance" {
+  name = "${var.github_repository}-agent-instance"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = {
+    ManagedBy = "terraform"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "agent_ssm" {
+  role       = aws_iam_role.agent_instance.name
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_role_policy" "agent_objects" {
+  name = "access-agent-object-prefix"
+  role = aws_iam_role.agent_instance.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = aws_s3_bucket.objects.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [var.agent_s3_prefix, "${var.agent_s3_prefix}*"]
+          }
+        }
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${aws_s3_bucket.objects.arn}/${var.agent_s3_prefix}*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "agent" {
+  name = "${var.github_repository}-agent-instance"
+  role = aws_iam_role.agent_instance.name
+
+  tags = {
+    ManagedBy = "terraform"
+  }
+}
+
+resource "aws_instance" "agent" {
+  ami                         = data.aws_ami.amazon_linux.id
+  instance_type               = var.agent_instance_type
+  subnet_id                   = var.subnet_id
+  vpc_security_group_ids      = [aws_security_group.runner.id]
+  iam_instance_profile        = aws_iam_instance_profile.agent.name
+  associate_public_ip_address = var.associate_public_ip_address
+  monitoring                  = true
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+    instance_metadata_tags      = "enabled"
+  }
+
+  root_block_device {
+    encrypted             = true
+    volume_size           = var.root_volume_size_gib
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.agent_ssm,
+    aws_iam_role_policy.agent_objects
+  ]
+
+  tags = {
+    Name       = "${var.github_repository}-agent"
+    ManagedBy  = "terraform"
+    Repository = local.repository
+    Purpose    = "persistent-agent"
+  }
+}
+
 resource "aws_launch_template" "runner" {
   name                   = "${var.github_repository}-ephemeral-runner"
   image_id               = data.aws_ami.amazon_linux.id

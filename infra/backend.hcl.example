@@ -1,0 +1,5 @@
+bucket         = "makrsoft-s3-bucket"
+key            = "aws-ec2-instance-agent/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "makrsoft-s3-bucket-lock"
+encrypt        = true

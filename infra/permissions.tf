@@ -42,7 +42,7 @@ resource "aws_iam_role_policy" "bootstrap" {
         Condition = {
           ArnEquals = {
             "ec2:LaunchTemplate" = aws_launch_template.runner.arn
-            "ec2:Subnet"          = data.aws_subnet.runner.arn
+            "ec2:Subnet"         = data.aws_subnet.runner.arn
           }
         }
       },
@@ -52,8 +52,8 @@ resource "aws_iam_role_policy" "bootstrap" {
         Resource = local.instance_arn
         Condition = {
           StringEquals = {
-            "ec2:CreateAction"         = "RunInstances"
-            "aws:RequestTag/ManagedBy" = local.runner_managed_by
+            "ec2:CreateAction"          = "RunInstances"
+            "aws:RequestTag/ManagedBy"  = local.runner_managed_by
             "aws:RequestTag/Repository" = local.repository
           }
           "ForAllValues:StringEquals" = {
@@ -104,4 +104,19 @@ output "runner_launch_template_id" {
 output "runner_parameter_prefix" {
   description = "SSM path used for one-time runner registration tokens."
   value       = local.parameter_prefix
+}
+
+output "agent_instance_id" {
+  description = "Instance ID of the persistent S3-enabled agent."
+  value       = aws_instance.agent.id
+}
+
+output "agent_instance_role_arn" {
+  description = "IAM role ARN attached to the persistent agent."
+  value       = aws_iam_role.agent_instance.arn
+}
+
+output "object_bucket_name" {
+  description = "S3 bucket for application objects; agent access is restricted to agent_s3_prefix."
+  value       = aws_s3_bucket.objects.id
 }
