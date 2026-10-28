@@ -1,0 +1,71 @@
+#!/bin/bash
+set -euo pipefail
+exec > >(tee /var/log/actions-runner-bootstrap.log | logger -t actions-runner-bootstrap -s 2>/dev/console) 2>&1
+
+dnf install -y awscli curl gzip tar jq libicu krb5-libs zlib openssl-libs libcurl libuuid libstdc++
+id runner >/dev/null 2>&1 || useradd --create-home --shell /bin/bash runner
+
+runner_dir=/opt/actions-runner
+install -d -o runner -g runner "$runner_dir"
+curl --fail --silent --show-error --location \
+  "https://github.com/actions/runner/releases/download/v${runner_version}/actions-runner-linux-x64-${runner_version}.tar.gz" \
+  --output /tmp/actions-runner.tar.gz
+tar -xzf /tmp/actions-runner.tar.gz -C "$runner_dir"
+rm -f /tmp/actions-runner.tar.gz
+chown -R runner:runner "$runner_dir"
+
+metadata_token=$(curl --fail --silent --show-error --request PUT \
+  --header 'X-aws-ec2-metadata-token-ttl-seconds: 21600' \
+  http://169.254.169.254/latest/api/token)
+metadata_header="X-aws-ec2-metadata-token: $${metadata_token}"
+instance_id=$(curl --fail --silent --show-error --header "$metadata_header" \
+  http://169.254.169.254/latest/meta-data/instance-id)
+runner_label=$(curl --fail --silent --show-error --header "$metadata_header" \
+  http://169.254.169.254/latest/meta-data/tags/instance/RunnerLabel)
+parameter_name="${parameter_prefix}/$${runner_label}/token"
+
+for attempt in $(seq 1 60); do
+  if runner_token=$(aws ssm get-parameter --name "$parameter_name" --with-decryption \
+    --query 'Parameter.Value' --output text --region '${aws_region}' 2>/dev/null); then
+    break
+  fi
+  if [ "$attempt" -eq 60 ]; then
+    echo "Timed out waiting for runner registration token in Parameter Store."
+    exit 1
+  fi
+  sleep 10
+done
+
+aws ssm delete-parameter --name "$parameter_name" --region '${aws_region}' >/dev/null
+runuser -u runner -- "$runner_dir/config.sh" \
+  --unattended \
+  --ephemeral \
+  --url 'https://github.com/${repository}' \
+  --token "$runner_token" \
+  --name "$instance_id" \
+  --labels "ephemeral,$${runner_label}" \
+  --work _work
+unset runner_token
+
+cat >/etc/systemd/system/actions-ephemeral-runner.service <<'UNIT'
+[Unit]
+Description=One-job ephemeral GitHub Actions runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=runner
+Group=runner
+WorkingDirectory=/opt/actions-runner
+ExecStart=/opt/actions-runner/run.sh
+ExecStopPost=+/usr/bin/systemctl poweroff
+Restart=no
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now actions-ephemeral-runner.service

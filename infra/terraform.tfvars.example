@@ -1,0 +1,9 @@
+aws_region        = "us-east-1"
+github_owner      = "YOUR_GITHUB_ORG"
+github_repository = "YOUR_REPOSITORY"
+vpc_id            = "vpc-0123456789abcdef0"
+subnet_id         = "subnet-0123456789abcdef0"
+runner_version    = "2.329.0"
+
+# Set true only when the selected subnet is public and does not use a NAT gateway.
+associate_public_ip_address = false

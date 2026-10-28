@@ -1,0 +1,141 @@
+name: Ephemeral EC2 runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: Shell command to run on the ephemeral runner
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Launch ephemeral runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      instance_id: ${{ steps.launch.outputs.instance_id }}
+      runner_label: ${{ steps.identity.outputs.runner_label }}
+    steps:
+      - name: Create GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RUNNER_APP_ID }}
+          private-key: ${{ secrets.RUNNER_APP_PRIVATE_KEY }}
+          permission-administration: write
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_RUNNER_ROLE_ARN }}
+          role-session-name: runner-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Create run-specific runner identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_label=gha-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Create registration token and launch EC2
+        id: launch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          LAUNCH_TEMPLATE_ID: ${{ vars.RUNNER_LAUNCH_TEMPLATE_ID }}
+          RUNNER_LABEL: ${{ steps.identity.outputs.runner_label }}
+          RUNNER_PARAMETER_PREFIX: ${{ vars.RUNNER_PARAMETER_PREFIX }}
+        run: |
+          set -euo pipefail
+          parameter_name="${RUNNER_PARAMETER_PREFIX}/${RUNNER_LABEL}/token"
+          token=$(gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runners/registration-token" --jq .token)
+          echo "::add-mask::${token}"
+          aws ssm put-parameter \
+            --name "$parameter_name" \
+            --type SecureString \
+            --value "$token" \
+            --overwrite >/dev/null
+          unset token
+
+          if ! instance_id=$(aws ec2 run-instances \
+            --launch-template "LaunchTemplateId=${LAUNCH_TEMPLATE_ID},Version=\$Latest" \
+            --min-count 1 \
+            --max-count 1 \
+            --tag-specifications "ResourceType=instance,Tags=[{Key=ManagedBy,Value=github-actions-ephemeral-runner},{Key=Repository,Value=${GITHUB_REPOSITORY}},{Key=RunnerLabel,Value=${RUNNER_LABEL}},{Key=RunId,Value=${GITHUB_RUN_ID}},{Key=RunAttempt,Value=${GITHUB_RUN_ATTEMPT}}]" \
+            --query 'Instances[0].InstanceId' \
+            --output text); then
+            aws ssm delete-parameter --name "$parameter_name" || true
+            exit 1
+          fi
+
+          echo "instance_id=${instance_id}" >> "$GITHUB_OUTPUT"
+
+  run:
+    name: Run requested command
+    needs: bootstrap
+    runs-on: [self-hosted, linux, x64, "${{ needs.bootstrap.outputs.runner_label }}"]
+    timeout-minutes: 360
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run command
+        shell: bash
+        env:
+          RUN_COMMAND: ${{ inputs.command }}
+        run: bash -euo pipefail -c "$RUN_COMMAND"
+
+  cleanup:
+    name: Deregister runner and terminate EC2
+    if: always()
+    needs: [bootstrap, run]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Configure AWS credentials with OIDC
+        if: needs.bootstrap.outputs.instance_id != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_RUNNER_ROLE_ARN }}
+          role-session-name: cleanup-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Create GitHub App installation token
+        if: needs.bootstrap.outputs.instance_id != ''
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RUNNER_APP_ID }}
+          private-key: ${{ secrets.RUNNER_APP_PRIVATE_KEY }}
+          permission-administration: write
+
+      - name: Deregister runner, delete token parameter, and terminate instance
+        if: needs.bootstrap.outputs.instance_id != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          INSTANCE_ID: ${{ needs.bootstrap.outputs.instance_id }}
+          RUNNER_LABEL: ${{ needs.bootstrap.outputs.runner_label }}
+          RUNNER_PARAMETER_PREFIX: ${{ vars.RUNNER_PARAMETER_PREFIX }}
+        run: |
+          set -euo pipefail
+          runner_id=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runners?per_page=100" \
+            --jq ".runners[] | select(.name == \"${INSTANCE_ID}\") | .id" || true)
+          if [ -n "$runner_id" ]; then
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/runners/${runner_id}"
+          fi
+
+          aws ssm delete-parameter \
+            --name "${RUNNER_PARAMETER_PREFIX}/${RUNNER_LABEL}/token" || true
+          aws ec2 terminate-instances --instance-ids "$INSTANCE_ID" >/dev/null
