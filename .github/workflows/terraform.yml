@@ -59,12 +59,13 @@ jobs:
       TF_DEPLOY_ROLE_ARN: ${{ vars.TF_DEPLOY_ROLE_ARN }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
+      TF_STATE_REGION: ${{ vars.TF_STATE_REGION }}
       TF_VAR_aws_region: ${{ vars.TF_AWS_REGION }}
+      TF_VAR_aws_account_id: "783161622588"
       TF_VAR_existing_github_oidc_provider_arn: ${{ vars.TF_GITHUB_OIDC_PROVIDER_ARN }}
       TF_VAR_github_owner: ${{ vars.TF_GITHUB_OWNER }}
       TF_VAR_github_repository: ${{ vars.TF_GITHUB_REPOSITORY }}
-      TF_VAR_vpc_id: ${{ vars.TF_VPC_ID }}
-      TF_VAR_subnet_id: ${{ vars.TF_SUBNET_ID }}
+      TF_VAR_resource_name_prefix: makrsoft
       TF_VAR_runner_version: ${{ vars.TF_RUNNER_VERSION }}
       TF_VAR_object_bucket_name: ${{ vars.TF_OBJECT_BUCKET_NAME }}
     steps:
@@ -83,12 +84,11 @@ jobs:
           : "${TF_DEPLOY_ROLE_ARN:?Set TF_DEPLOY_ROLE_ARN}"
           : "${TF_STATE_BUCKET:?Set TF_STATE_BUCKET}"
           : "${TF_STATE_LOCK_TABLE:?Set TF_STATE_LOCK_TABLE}"
-          : "${TF_VAR_aws_region:?Set TF_AWS_REGION}"
+          : "${TF_STATE_REGION:?Set TF_STATE_REGION}"
+          : "${TF_VAR_aws_region:?Set TF_AWS_REGION (ap-southeast-2)}"
           : "${TF_VAR_existing_github_oidc_provider_arn:?Set TF_GITHUB_OIDC_PROVIDER_ARN}"
           : "${TF_VAR_github_owner:?Set TF_GITHUB_OWNER}"
           : "${TF_VAR_github_repository:?Set TF_GITHUB_REPOSITORY}"
-          : "${TF_VAR_vpc_id:?Set TF_VPC_ID}"
-          : "${TF_VAR_subnet_id:?Set TF_SUBNET_ID}"
           : "${TF_VAR_runner_version:?Set TF_RUNNER_VERSION}"
           : "${TF_VAR_object_bucket_name:?Set TF_OBJECT_BUCKET_NAME}"
 
@@ -99,6 +99,16 @@ jobs:
           role-session-name: terraform-plan-${{ github.run_id }}
           aws-region: ${{ vars.TF_AWS_REGION }}
 
+      - name: Verify AWS account
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_account_id=$(aws sts get-caller-identity --query Account --output text)
+          if [[ "$actual_account_id" != "$TF_VAR_aws_account_id" ]]; then
+            echo "::error::AWS credentials target account ${actual_account_id}; expected ${TF_VAR_aws_account_id}."
+            exit 1
+          fi
+
       - name: Initialize remote backend
         shell: bash
         run: |
@@ -108,7 +118,7 @@ jobs:
           terraform -chdir=infra init -input=false -lockfile=readonly \
             -backend-config="bucket=${TF_STATE_BUCKET}" \
             -backend-config="key=aws-ec2-instance-agent/terraform.tfstate" \
-            -backend-config="region=${TF_VAR_aws_region}" \
+            -backend-config="region=${TF_STATE_REGION}" \
             -backend-config="dynamodb_table=${TF_STATE_LOCK_TABLE}" \
             -backend-config="encrypt=true"
 
@@ -138,7 +148,9 @@ jobs:
       TF_DEPLOY_ROLE_ARN: ${{ vars.TF_DEPLOY_ROLE_ARN }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
+      TF_STATE_REGION: ${{ vars.TF_STATE_REGION }}
       TF_VAR_aws_region: ${{ vars.TF_AWS_REGION }}
+      TF_VAR_aws_account_id: "783161622588"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -155,7 +167,8 @@ jobs:
           : "${TF_DEPLOY_ROLE_ARN:?Set TF_DEPLOY_ROLE_ARN}"
           : "${TF_STATE_BUCKET:?Set TF_STATE_BUCKET}"
           : "${TF_STATE_LOCK_TABLE:?Set TF_STATE_LOCK_TABLE}"
-          : "${TF_VAR_aws_region:?Set TF_AWS_REGION}"
+          : "${TF_STATE_REGION:?Set TF_STATE_REGION}"
+          : "${TF_VAR_aws_region:?Set TF_AWS_REGION (ap-southeast-2)}"
 
       - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -163,6 +176,16 @@ jobs:
           role-to-assume: ${{ vars.TF_DEPLOY_ROLE_ARN }}
           role-session-name: terraform-apply-${{ github.run_id }}
           aws-region: ${{ vars.TF_AWS_REGION }}
+
+      - name: Verify AWS account
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_account_id=$(aws sts get-caller-identity --query Account --output text)
+          if [[ "$actual_account_id" != "$TF_VAR_aws_account_id" ]]; then
+            echo "::error::AWS credentials target account ${actual_account_id}; expected ${TF_VAR_aws_account_id}."
+            exit 1
+          fi
 
       - name: Initialize remote backend
         shell: bash
@@ -173,7 +196,7 @@ jobs:
           terraform -chdir=infra init -input=false -lockfile=readonly \
             -backend-config="bucket=${TF_STATE_BUCKET}" \
             -backend-config="key=aws-ec2-instance-agent/terraform.tfstate" \
-            -backend-config="region=${TF_VAR_aws_region}" \
+            -backend-config="region=${TF_STATE_REGION}" \
             -backend-config="dynamodb_table=${TF_STATE_LOCK_TABLE}" \
             -backend-config="encrypt=true"
 

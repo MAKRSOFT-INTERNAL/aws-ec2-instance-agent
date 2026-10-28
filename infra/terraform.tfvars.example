@@ -1,10 +1,11 @@
-aws_region        = "us-east-1"
+aws_region        = "ap-southeast-2"
+aws_account_id    = "783161622588"
 github_owner      = "MAKRSOFT-INTERNAL"
 github_repository = "aws-ec2-instance-agent"
-vpc_id            = "vpc-0123456789abcdef0"
-subnet_id         = "subnet-0123456789abcdef0"
-runner_version     = "2.329.0"
-object_bucket_name = "makrsoft-ec2-agent-objects-unique-suffix"
+resource_name_prefix = "makrsoft"
+vpc_cidr             = "10.42.0.0/16"
+runner_subnet_az_id  = "apse2-az1"
+runner_version       = "2.329.0"
+object_bucket_name   = "makrsoft-app-objects-s3-783161622588"
 
-# Set true only when the selected subnet is public and does not use a NAT gateway.
-associate_public_ip_address = false
+associate_public_ip_address = true

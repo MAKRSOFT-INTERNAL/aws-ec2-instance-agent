@@ -1,5 +1,5 @@
 resource "aws_iam_role" "janitor" {
-  name = "${var.github_repository}-runner-janitor"
+  name = "${var.resource_name_prefix}-runner-janitor"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -23,7 +23,7 @@ resource "aws_iam_role_policy_attachment" "janitor_logs" {
 }
 
 resource "aws_iam_role_policy" "janitor" {
-  name = "terminate-stale-runners-and-delete-stale-parameters"
+  name = "${var.resource_name_prefix}-terminate-stale-runners-and-delete-stale-parameters"
   role = aws_iam_role.janitor.id
 
   policy = jsonencode({
@@ -61,7 +61,7 @@ data "archive_file" "janitor" {
 }
 
 resource "aws_lambda_function" "janitor" {
-  function_name    = "${var.github_repository}-runner-janitor"
+  function_name    = "${var.resource_name_prefix}-runner-janitor"
   role             = aws_iam_role.janitor.arn
   handler          = "janitor.lambda_handler"
   runtime          = "python3.12"
@@ -86,7 +86,7 @@ resource "aws_lambda_function" "janitor" {
 }
 
 resource "aws_cloudwatch_event_rule" "janitor" {
-  name                = "${var.github_repository}-runner-janitor"
+  name                = "${var.resource_name_prefix}-runner-janitor"
   description         = "Remove abandoned EC2 runners and stale registration token parameters."
   schedule_expression = "rate(15 minutes)"
 }

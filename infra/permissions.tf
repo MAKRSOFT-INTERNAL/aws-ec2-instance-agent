@@ -1,5 +1,5 @@
 resource "aws_iam_role" "bootstrap" {
-  name = "${var.github_repository}-runner-bootstrap"
+  name = "${var.resource_name_prefix}-runner-bootstrap"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -24,7 +24,7 @@ resource "aws_iam_role" "bootstrap" {
 }
 
 resource "aws_iam_role_policy" "bootstrap" {
-  name = "launch-and-cleanup-ephemeral-runner"
+  name = "${var.resource_name_prefix}-launch-and-cleanup-ephemeral-runner"
   role = aws_iam_role.bootstrap.id
 
   policy = jsonencode({
@@ -42,7 +42,7 @@ resource "aws_iam_role_policy" "bootstrap" {
         Condition = {
           ArnEquals = {
             "ec2:LaunchTemplate" = aws_launch_template.runner.arn
-            "ec2:Subnet"         = data.aws_subnet.runner.arn
+            "ec2:Subnet"         = aws_subnet.agent_public[var.runner_subnet_az_id].arn
           }
         }
       },
@@ -94,6 +94,11 @@ resource "aws_iam_role_policy" "bootstrap" {
 output "bootstrap_role_arn" {
   description = "ARN to configure as the AWS_RUNNER_ROLE_ARN GitHub Actions variable."
   value       = aws_iam_role.bootstrap.arn
+}
+
+output "github_oidc_provider_arn" {
+  description = "GitHub Actions OIDC provider ARN for the Terraform deployment role trust policy."
+  value       = local.oidc_provider_arn
 }
 
 output "runner_launch_template_id" {

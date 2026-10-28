@@ -1,8 +1,5 @@
 data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
-data "aws_subnet" "runner" {
-  id = var.subnet_id
-}
 
 data "aws_ami" "amazon_linux" {
   most_recent = true
@@ -44,34 +41,8 @@ resource "aws_iam_openid_connect_provider" "github" {
   }
 }
 
-resource "aws_security_group" "runner" {
-  name        = "${var.github_repository}-ephemeral-runner"
-  description = "No inbound access; outbound access for ephemeral GitHub Actions runners."
-  vpc_id      = var.vpc_id
-
-  lifecycle {
-    precondition {
-      condition     = data.aws_subnet.runner.vpc_id == var.vpc_id
-      error_message = "The runner subnet must belong to vpc_id."
-    }
-  }
-
-  egress {
-    description = "Runner access to GitHub and AWS services."
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name      = "${var.github_repository}-ephemeral-runner"
-    ManagedBy = "terraform"
-  }
-}
-
 resource "aws_iam_role" "runner_instance" {
-  name = "${var.github_repository}-ephemeral-runner-instance"
+  name = "${var.resource_name_prefix}-ephemeral-runner-instance"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -88,7 +59,7 @@ resource "aws_iam_role" "runner_instance" {
 }
 
 resource "aws_iam_role_policy" "runner_instance" {
-  name = "read-and-delete-runner-registration-token"
+  name = "${var.resource_name_prefix}-read-and-delete-runner-registration-token"
   role = aws_iam_role.runner_instance.id
 
   policy = jsonencode({
@@ -117,7 +88,7 @@ resource "aws_iam_role_policy" "runner_instance" {
 }
 
 resource "aws_iam_instance_profile" "runner" {
-  name = "${var.github_repository}-ephemeral-runner"
+  name = "${var.resource_name_prefix}-ephemeral-runner"
   role = aws_iam_role.runner_instance.name
 
   tags = {
@@ -191,7 +162,7 @@ resource "aws_s3_bucket_policy" "objects_tls_only" {
 }
 
 resource "aws_iam_role" "agent_instance" {
-  name = "${var.github_repository}-agent-instance"
+  name = "${var.resource_name_prefix}-agent-instance"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -213,7 +184,7 @@ resource "aws_iam_role_policy_attachment" "agent_ssm" {
 }
 
 resource "aws_iam_role_policy" "agent_objects" {
-  name = "access-agent-object-prefix"
+  name = "${var.resource_name_prefix}-access-agent-object-prefix"
   role = aws_iam_role.agent_instance.id
 
   policy = jsonencode({
@@ -243,7 +214,7 @@ resource "aws_iam_role_policy" "agent_objects" {
 }
 
 resource "aws_iam_instance_profile" "agent" {
-  name = "${var.github_repository}-agent-instance"
+  name = "${var.resource_name_prefix}-agent-instance"
   role = aws_iam_role.agent_instance.name
 
   tags = {
@@ -254,8 +225,8 @@ resource "aws_iam_instance_profile" "agent" {
 resource "aws_instance" "agent" {
   ami                         = data.aws_ami.amazon_linux.id
   instance_type               = var.agent_instance_type
-  subnet_id                   = var.subnet_id
-  vpc_security_group_ids      = [aws_security_group.runner.id]
+  subnet_id                   = aws_subnet.agent_public[var.runner_subnet_az_id].id
+  vpc_security_group_ids      = [aws_security_group.agent.id]
   iam_instance_profile        = aws_iam_instance_profile.agent.name
   associate_public_ip_address = var.associate_public_ip_address
   monitoring                  = true
@@ -280,7 +251,7 @@ resource "aws_instance" "agent" {
   ]
 
   tags = {
-    Name       = "${var.github_repository}-agent"
+    Name       = "${var.resource_name_prefix}-agent"
     ManagedBy  = "terraform"
     Repository = local.repository
     Purpose    = "persistent-agent"
@@ -288,7 +259,7 @@ resource "aws_instance" "agent" {
 }
 
 resource "aws_launch_template" "runner" {
-  name                   = "${var.github_repository}-ephemeral-runner"
+  name                   = "${var.resource_name_prefix}-ephemeral-runner"
   image_id               = data.aws_ami.amazon_linux.id
   instance_type          = var.instance_type
   update_default_version = true
@@ -299,10 +270,10 @@ resource "aws_launch_template" "runner" {
 
   network_interfaces {
     device_index                = 0
-    subnet_id                   = var.subnet_id
+    subnet_id                   = aws_subnet.agent_public[var.runner_subnet_az_id].id
     associate_public_ip_address = var.associate_public_ip_address
     delete_on_termination       = true
-    security_groups             = [aws_security_group.runner.id]
+    security_groups             = [aws_security_group.agent.id]
   }
 
   metadata_options {
@@ -341,7 +312,7 @@ resource "aws_launch_template" "runner" {
   }
 
   tags = {
-    Name      = "${var.github_repository}-ephemeral-runner"
+    Name      = "${var.resource_name_prefix}-ephemeral-runner"
     ManagedBy = "terraform"
   }
 }

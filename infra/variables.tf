@@ -3,6 +3,17 @@ variable "aws_region" {
   type        = string
 }
 
+variable "aws_account_id" {
+  description = "AWS account ID allowed to receive the infrastructure."
+  type        = string
+  default     = "783161622588"
+
+  validation {
+    condition     = can(regex("^[0-9]{12}$", var.aws_account_id))
+    error_message = "aws_account_id must be a 12-digit AWS account ID."
+  }
+}
+
 variable "github_owner" {
   description = "GitHub organization or user that owns the repository."
   type        = string
@@ -25,20 +36,33 @@ variable "existing_github_oidc_provider_arn" {
   default     = ""
 }
 
-variable "vpc_id" {
-  description = "VPC in which to create the runner security group."
+variable "resource_name_prefix" {
+  description = "Prefix used for AWS resource names and tags."
   type        = string
+  default     = "makrsoft"
 }
 
-variable "subnet_id" {
-  description = "Subnet used by runner instances. It must have outbound internet access through a public IP or NAT."
+variable "vpc_cidr" {
+  description = "IPv4 CIDR block for the new VPC."
   type        = string
+  default     = "10.42.0.0/16"
+}
+
+variable "runner_subnet_az_id" {
+  description = "AWS Availability Zone ID whose subnet is used for the persistent agent and ephemeral runners."
+  type        = string
+  default     = "apse2-az1"
+
+  validation {
+    condition     = contains(["apse2-az1", "apse2-az3", "apse2-az2"], var.runner_subnet_az_id)
+    error_message = "runner_subnet_az_id must be one of apse2-az1, apse2-az3, or apse2-az2 for ap-southeast-2."
+  }
 }
 
 variable "associate_public_ip_address" {
-  description = "Associate a public IPv4 address with runners. Keep false when the subnet has NAT egress."
+  description = "Associate public IPv4 addresses with instances in the public subnet."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "instance_type" {
