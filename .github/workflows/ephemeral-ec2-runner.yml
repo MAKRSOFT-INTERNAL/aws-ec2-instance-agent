@@ -23,14 +23,6 @@ jobs:
       instance_id: ${{ steps.launch.outputs.instance_id }}
       runner_label: ${{ steps.identity.outputs.runner_label }}
     steps:
-      - name: Create GitHub App installation token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.RUNNER_APP_ID }}
-          private-key: ${{ secrets.RUNNER_APP_PRIVATE_KEY }}
-          permission-administration: write
-
       - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -49,12 +41,13 @@ jobs:
         id: launch
         shell: bash
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           LAUNCH_TEMPLATE_ID: ${{ vars.RUNNER_LAUNCH_TEMPLATE_ID }}
           RUNNER_LABEL: ${{ steps.identity.outputs.runner_label }}
           RUNNER_PARAMETER_PREFIX: ${{ vars.RUNNER_PARAMETER_PREFIX }}
         run: |
           set -euo pipefail
+          : "${GH_TOKEN:?Set the organization secret GH_TOKEN with repository Administration: write permission}"
           parameter_name="${RUNNER_PARAMETER_PREFIX}/${RUNNER_LABEL}/token"
           token=$(gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runners/registration-token" --jq .token)
           echo "::add-mask::${token}"
@@ -111,31 +104,29 @@ jobs:
           role-session-name: cleanup-${{ github.run_id }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Create GitHub App installation token
-        if: needs.bootstrap.outputs.instance_id != ''
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.RUNNER_APP_ID }}
-          private-key: ${{ secrets.RUNNER_APP_PRIVATE_KEY }}
-          permission-administration: write
-
       - name: Deregister runner, delete token parameter, and terminate instance
         if: needs.bootstrap.outputs.instance_id != ''
         shell: bash
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           INSTANCE_ID: ${{ needs.bootstrap.outputs.instance_id }}
           RUNNER_LABEL: ${{ needs.bootstrap.outputs.runner_label }}
           RUNNER_PARAMETER_PREFIX: ${{ vars.RUNNER_PARAMETER_PREFIX }}
         run: |
           set -euo pipefail
-          runner_id=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runners?per_page=100" \
-            --jq ".runners[] | select(.name == \"${INSTANCE_ID}\") | .id" || true)
-          if [ -n "$runner_id" ]; then
-            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/runners/${runner_id}"
+          cleanup_status=0
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::Set the organization secret GH_TOKEN with repository Administration: write permission"
+            cleanup_status=1
+          else
+            runner_id=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runners?per_page=100" \
+              --jq ".runners[] | select(.name == \"${INSTANCE_ID}\") | .id" || true)
+            if [ -n "$runner_id" ]; then
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/runners/${runner_id}" || cleanup_status=1
+            fi
           fi
 
           aws ssm delete-parameter \
             --name "${RUNNER_PARAMETER_PREFIX}/${RUNNER_LABEL}/token" || true
           aws ec2 terminate-instances --instance-ids "$INSTANCE_ID" >/dev/null
+          exit "$cleanup_status"
