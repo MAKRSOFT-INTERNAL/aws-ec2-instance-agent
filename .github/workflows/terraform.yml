@@ -163,7 +163,8 @@ jobs:
         run: |
           set -euo pipefail
           resource_address="module.eks.aws_eks_access_entry.cluster_view"
-          if terraform state list | grep -Fqx "$resource_address"; then
+          state_resources="$(terraform state list)"
+          if grep -Fqx -- "$resource_address" <<<"$state_resources"; then
             echo "EKS access entry is already managed in Terraform state."
             exit 0
           fi
