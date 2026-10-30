@@ -14,6 +14,20 @@ on:
       - "modules/**"
       - ".github/workflows/terraform.yml"
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Terraform operation
+        type: choice
+        required: true
+        default: apply
+        options:
+          - apply
+          - destroy
+      confirm_destroy:
+        description: Type the cluster name to confirm full-stack destruction
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -52,6 +66,8 @@ jobs:
     permissions:
       contents: read
     env:
+      TF_OPERATION: ${{ inputs.operation || 'apply' }}
+      TF_DESTROY_CONFIRMATION: ${{ inputs.confirm_destroy || '' }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'makrosft-tfstate-s3' }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
       TF_VAR_cluster_name: ${{ vars.EKS_CLUSTER_NAME || 'makrsoft-eks' }}
@@ -79,6 +95,20 @@ jobs:
           test -n "$AWS_ACCESS_KEY_ID"
           test -n "$AWS_SECRET_ACCESS_KEY"
           test -n "$TF_STATE_BUCKET"
+          if [[ "$TF_OPERATION" != "apply" && "$TF_OPERATION" != "destroy" ]]; then
+            echo "::error::Unsupported Terraform operation: $TF_OPERATION"
+            exit 1
+          fi
+          if [[ "$TF_OPERATION" == "destroy" ]]; then
+            if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+              echo "::error::Destroy is only available through manual workflow dispatch."
+              exit 1
+            fi
+            if [[ "$TF_DESTROY_CONFIRMATION" != "$TF_VAR_cluster_name" ]]; then
+              echo "::error::To confirm destroy, enter the exact cluster name: $TF_VAR_cluster_name"
+              exit 1
+            fi
+          fi
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESSKEYID }}
@@ -155,7 +185,11 @@ jobs:
       - name: Create and display saved plan
         working-directory: terraform/eks
         run: |
-          terraform plan -input=false -out=tfplan
+          if [[ "$TF_OPERATION" == "destroy" ]]; then
+            terraform plan -destroy -input=false -out=tfplan
+          else
+            terraform plan -input=false -out=tfplan
+          fi
           terraform show -no-color tfplan
       - uses: actions/upload-artifact@v4
         with:
@@ -171,6 +205,7 @@ jobs:
     permissions:
       contents: read
     env:
+      TF_OPERATION: ${{ inputs.operation || 'apply' }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'makrosft-tfstate-s3' }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
       TF_VAR_cluster_name: ${{ vars.EKS_CLUSTER_NAME || 'makrsoft-eks' }}

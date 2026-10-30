@@ -57,9 +57,12 @@ The [`Terraform EKS` workflow](./.github/workflows/terraform.yml):
 
 - Runs formatting and Terraform validation on pull requests and pushes to `main`. These checks do not receive AWS credentials.
 - On pushes to `main`, creates a saved Terraform plan and automatically applies it without an environment approval. Manual dispatch from `main` does the same.
+- Manual dispatch supports `apply` and `destroy`. For `destroy`, enter the exact configured cluster name (default `makrsoft-eks`) in `confirm_destroy`; the workflow creates and displays a full destroy plan, then applies that saved plan.
 - Uses the `AWS_ACCESSKEYID` and `AWS_SECRET_ACCESSKEY` secrets directly as AWS credentials, then uses the S3 backend with native S3 lock files.
 
-Any push to `main` that changes Terraform, the module, or this workflow can provision, update, or destroy AWS resources according to the plan. Review the plan printed in the workflow logs and protect `main` with required pull-request reviews before enabling this behavior. To manually run the deployment, open **Actions → Terraform EKS → Run workflow** and select `main`. The saved plan artifact is retained for one day.
+Destroy removes the complete stack managed by `terraform/eks` and its module, including the EKS cluster, managed node group, add-ons, IAM roles, VPC, and networking. It does not delete the S3 state bucket. Partial resource destruction is not supported because these resources share Terraform state and have dependencies. To run an operation manually, open **Actions → Terraform EKS → Run workflow**, select `main`, choose `apply` or `destroy`, and for `destroy` type the exact cluster name in `confirm_destroy`. Review the plan in the workflow logs. The saved plan artifact is retained for one day.
+
+Pushes to `main` continue to automatically apply the normal Terraform plan. Protect `main` with required pull-request reviews, since changes to Terraform can update or remove infrastructure.
 
 The workflow currently pins Terraform CLI to `1.10.5`.
 
