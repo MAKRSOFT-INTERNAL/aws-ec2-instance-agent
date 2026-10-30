@@ -1,0 +1,163 @@
+name: Terraform EKS
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - "modules/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - "modules/**"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-eks-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Format and validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - name: Check formatting
+        run: terraform fmt -check -recursive terraform modules
+      - name: Validate bootstrap
+        working-directory: terraform/bootstrap
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+      - name: Validate EKS configuration
+        working-directory: terraform/eks
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+  plan:
+    name: Plan EKS deployment
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VAR_aws_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      TF_VAR_cluster_name: ${{ vars.EKS_CLUSTER_NAME || 'makrsoft-eks' }}
+      TF_VAR_kubernetes_version: ${{ vars.EKS_KUBERNETES_VERSION || '1.35' }}
+      TF_VAR_vpc_cidr: ${{ vars.EKS_VPC_CIDR || '10.42.0.0/16' }}
+      TF_VAR_availability_zone_count: ${{ vars.EKS_AVAILABILITY_ZONE_COUNT || '3' }}
+      TF_VAR_node_instance_types: ${{ vars.EKS_NODE_INSTANCE_TYPES || '["t3.medium"]' }}
+      TF_VAR_node_min_size: ${{ vars.EKS_NODE_MIN_SIZE || '2' }}
+      TF_VAR_node_desired_size: ${{ vars.EKS_NODE_DESIRED_SIZE || '2' }}
+      TF_VAR_node_max_size: ${{ vars.EKS_NODE_MAX_SIZE || '3' }}
+      TF_VAR_cluster_endpoint_public_access: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS || 'false' }}
+      TF_VAR_cluster_endpoint_public_access_cidrs: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS || '[]' }}
+      TF_VAR_cluster_admin_iam_role_arn: ${{ vars.EKS_CLUSTER_ADMIN_IAM_ROLE_ARN || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - name: Validate deployment configuration
+        env:
+          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          test -n "$AWS_DEPLOY_ROLE_ARN"
+          test -n "$TF_STATE_BUCKET"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      - name: Initialize Terraform
+        working-directory: terraform/eks
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=eks/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+      - name: Create and display saved plan
+        working-directory: terraform/eks
+        run: |
+          terraform plan -input=false -out=tfplan
+          terraform show -no-color tfplan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eks-terraform-plan
+          path: terraform/eks/tfplan
+          retention-days: 1
+
+  apply:
+    name: Apply approved EKS plan
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VAR_aws_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      TF_VAR_cluster_name: ${{ vars.EKS_CLUSTER_NAME || 'makrsoft-eks' }}
+      TF_VAR_kubernetes_version: ${{ vars.EKS_KUBERNETES_VERSION || '1.35' }}
+      TF_VAR_vpc_cidr: ${{ vars.EKS_VPC_CIDR || '10.42.0.0/16' }}
+      TF_VAR_availability_zone_count: ${{ vars.EKS_AVAILABILITY_ZONE_COUNT || '3' }}
+      TF_VAR_node_instance_types: ${{ vars.EKS_NODE_INSTANCE_TYPES || '["t3.medium"]' }}
+      TF_VAR_node_min_size: ${{ vars.EKS_NODE_MIN_SIZE || '2' }}
+      TF_VAR_node_desired_size: ${{ vars.EKS_NODE_DESIRED_SIZE || '2' }}
+      TF_VAR_node_max_size: ${{ vars.EKS_NODE_MAX_SIZE || '3' }}
+      TF_VAR_cluster_endpoint_public_access: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS || 'false' }}
+      TF_VAR_cluster_endpoint_public_access_cidrs: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS || '[]' }}
+      TF_VAR_cluster_admin_iam_role_arn: ${{ vars.EKS_CLUSTER_ADMIN_IAM_ROLE_ARN || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - name: Validate deployment configuration
+        env:
+          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          test -n "$AWS_DEPLOY_ROLE_ARN"
+          test -n "$TF_STATE_BUCKET"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: eks-terraform-plan
+          path: terraform/eks
+      - name: Initialize Terraform
+        working-directory: terraform/eks
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=eks/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+      - name: Apply saved plan
+        working-directory: terraform/eks
+        run: terraform apply -input=false tfplan
