@@ -65,6 +65,7 @@ jobs:
       TF_VAR_cluster_endpoint_public_access: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS || 'false' }}
       TF_VAR_cluster_endpoint_public_access_cidrs: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS || '[]' }}
       TF_VAR_cluster_admin_iam_role_arn: ${{ vars.EKS_CLUSTER_ADMIN_IAM_ROLE_ARN || '' }}
+      TF_VAR_cluster_view_iam_principal_arn: ${{ vars.EKS_CLUSTER_VIEW_IAM_PRINCIPAL_ARN || 'arn:aws:iam::783161622588:user/makrsoft-admin' }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -156,6 +157,7 @@ jobs:
       TF_VAR_cluster_endpoint_public_access: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS || 'false' }}
       TF_VAR_cluster_endpoint_public_access_cidrs: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS || '[]' }}
       TF_VAR_cluster_admin_iam_role_arn: ${{ vars.EKS_CLUSTER_ADMIN_IAM_ROLE_ARN || '' }}
+      TF_VAR_cluster_view_iam_principal_arn: ${{ vars.EKS_CLUSTER_VIEW_IAM_PRINCIPAL_ARN || 'arn:aws:iam::783161622588:user/makrsoft-admin' }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3

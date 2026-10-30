@@ -17,4 +17,5 @@ module "eks" {
   cluster_endpoint_public_access       = var.cluster_endpoint_public_access
   cluster_endpoint_public_access_cidrs = var.cluster_endpoint_public_access_cidrs
   cluster_admin_iam_role_arn           = var.cluster_admin_iam_role_arn
+  cluster_view_iam_principal_arn       = var.cluster_view_iam_principal_arn
 }

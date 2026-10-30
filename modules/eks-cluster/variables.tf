@@ -57,3 +57,8 @@ variable "cluster_admin_iam_role_arn" {
   description = "Optional IAM role to grant EKS cluster-admin access."
   type        = string
 }
+
+variable "cluster_view_iam_principal_arn" {
+  description = "IAM principal to grant EKS admin-view access."
+  type        = string
+}

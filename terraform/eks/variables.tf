@@ -112,3 +112,9 @@ variable "cluster_admin_iam_role_arn" {
   type        = string
   default     = ""
 }
+
+variable "cluster_view_iam_principal_arn" {
+  description = "IAM user or role to grant EKS admin-view access."
+  type        = string
+  default     = "arn:aws:iam::783161622588:user/makrsoft-admin"
+}

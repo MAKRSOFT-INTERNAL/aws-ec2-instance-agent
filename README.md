@@ -19,7 +19,7 @@ An EKS control plane, EC2 worker nodes, NAT gateway, public IPv4 addresses, and 
 
 The Kubernetes API endpoint is private-only by default. To enable public endpoint access, set `cluster_endpoint_public_access = true` and provide a narrow `cluster_endpoint_public_access_cidrs` allowlist. Do not use `0.0.0.0/0` for a production cluster.
 
-The IAM principal running Terraform (currently the `makrsoft-admin` user in GitHub Actions) receives the EKS creator's cluster-admin access. To grant a separate human/admin IAM role access, set `cluster_admin_iam_role_arn` in [`terraform/eks/variables.tf`](./terraform/eks/variables.tf). The module creates an EKS access entry and associates `AmazonEKSClusterAdminPolicy` with that role. The role also needs AWS permissions to call `eks:DescribeCluster`; public endpoint access or private network connectivity is required to reach the Kubernetes API.
+The cluster creator receives bootstrap administrator access. Terraform also creates a cluster access entry for the `makrsoft-admin` IAM user and associates the cluster-scoped `AmazonEKSAdminViewPolicy`, allowing it to view Kubernetes resources in the AWS console. To grant a separate IAM role full Kubernetes administrator access, set `cluster_admin_iam_role_arn` in [`terraform/eks/variables.tf`](./terraform/eks/variables.tf); the module creates an access entry and associates `AmazonEKSClusterAdminPolicy`. The principal also needs AWS permission to call `eks:DescribeCluster`; public endpoint access or private network connectivity is required to reach the Kubernetes API.
 
 ## One-time bootstrap
 
@@ -78,6 +78,7 @@ The workflow reads optional repository **Actions variables** for deployment sett
 | `EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS` | `false` | `true` only with a restricted CIDR list |
 | `EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS` | `[]` | JSON list of trusted CIDRs |
 | `EKS_CLUSTER_ADMIN_IAM_ROLE_ARN` | empty | Optional IAM role to grant cluster-admin |
+| `EKS_CLUSTER_VIEW_IAM_PRINCIPAL_ARN` | `arn:aws:iam::783161622588:user/makrsoft-admin` | IAM user or role to grant cluster-level view access |
 
 The workflow authenticates as `makrsoft-admin` with the access-key secrets and defaults `TF_STATE_BUCKET` to `makrosft-tfstate-s3`. Set `AWS_REGION` to `ap-southeast-2`. Configure optional `EKS_*` variables at the repository level so plan and apply receive the same values. Local `terraform.tfvars` files are ignored by Git and are not used by GitHub Actions.
 

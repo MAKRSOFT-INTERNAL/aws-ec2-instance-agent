@@ -294,3 +294,19 @@ resource "aws_eks_access_policy_association" "cluster_admin" {
 
   depends_on = [aws_eks_access_entry.cluster_admin]
 }
+
+resource "aws_eks_access_entry" "cluster_view" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.cluster_view_iam_principal_arn
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "cluster_view" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = aws_eks_access_entry.cluster_view.principal_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+}
