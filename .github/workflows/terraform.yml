@@ -58,7 +58,7 @@ jobs:
       TF_VAR_kubernetes_version: ${{ vars.EKS_KUBERNETES_VERSION || '1.35' }}
       TF_VAR_vpc_cidr: ${{ vars.EKS_VPC_CIDR || '10.42.0.0/16' }}
       TF_VAR_availability_zone_count: ${{ vars.EKS_AVAILABILITY_ZONE_COUNT || '3' }}
-      TF_VAR_node_instance_types: ${{ vars.EKS_NODE_INSTANCE_TYPES || '["t3.medium"]' }}
+      TF_VAR_node_instance_types: ${{ vars.EKS_NODE_INSTANCE_TYPES || '["t3.micro"]' }}
       TF_VAR_node_min_size: ${{ vars.EKS_NODE_MIN_SIZE || '2' }}
       TF_VAR_node_desired_size: ${{ vars.EKS_NODE_DESIRED_SIZE || '2' }}
       TF_VAR_node_max_size: ${{ vars.EKS_NODE_MAX_SIZE || '3' }}
@@ -149,7 +149,7 @@ jobs:
       TF_VAR_kubernetes_version: ${{ vars.EKS_KUBERNETES_VERSION || '1.35' }}
       TF_VAR_vpc_cidr: ${{ vars.EKS_VPC_CIDR || '10.42.0.0/16' }}
       TF_VAR_availability_zone_count: ${{ vars.EKS_AVAILABILITY_ZONE_COUNT || '3' }}
-      TF_VAR_node_instance_types: ${{ vars.EKS_NODE_INSTANCE_TYPES || '["t3.medium"]' }}
+      TF_VAR_node_instance_types: ${{ vars.EKS_NODE_INSTANCE_TYPES || '["t3.micro"]' }}
       TF_VAR_node_min_size: ${{ vars.EKS_NODE_MIN_SIZE || '2' }}
       TF_VAR_node_desired_size: ${{ vars.EKS_NODE_DESIRED_SIZE || '2' }}
       TF_VAR_node_max_size: ${{ vars.EKS_NODE_MAX_SIZE || '3' }}

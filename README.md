@@ -7,7 +7,7 @@ This repository provisions an Amazon EKS cluster and managed EC2 worker nodes in
 - A dedicated VPC with public and private subnets across two or three availability zones.
 - One NAT gateway for private-subnet egress, to keep the default setup less expensive than one NAT gateway per AZ.
 - An EKS control plane with private Kubernetes API access, control-plane API/audit/authenticator logs, and managed `vpc-cni`, `kube-proxy`, and CoreDNS add-ons.
-- An EKS managed node group with two `t3.medium` On-Demand nodes by default, scalable from two to three nodes.
+- An EKS managed node group with two `t3.micro` On-Demand nodes by default, scalable from two to three nodes. `t3.micro` has limited CPU and memory and is suitable only for light testing; EKS workloads may not schedule reliably at this size.
 - IAM roles for the EKS control plane and worker nodes.
 - A versioned, encrypted S3 state bucket for Terraform.
 
@@ -71,7 +71,7 @@ The workflow reads optional repository **Actions variables** for deployment sett
 | `EKS_KUBERNETES_VERSION` | `1.35` | A version supported by EKS in the selected region |
 | `EKS_VPC_CIDR` | `10.42.0.0/16` | Non-overlapping IPv4 range, `/16` through `/20` |
 | `EKS_AVAILABILITY_ZONE_COUNT` | `3` | `2` or `3` |
-| `EKS_NODE_INSTANCE_TYPES` | `["t3.medium"]` | JSON list, e.g. `["m6i.large"]` |
+| `EKS_NODE_INSTANCE_TYPES` | `["t3.micro"]` | JSON list, e.g. `["m6i.large"]` |
 | `EKS_NODE_MIN_SIZE` | `2` | Integer |
 | `EKS_NODE_DESIRED_SIZE` | `2` | Integer between min and max |
 | `EKS_NODE_MAX_SIZE` | `3` | Integer |
@@ -98,6 +98,6 @@ terraform validate
 terraform plan
 ```
 
-Terraform defaults to the `makrsoft-eks` cluster name, Kubernetes `1.35`, three AZs, and two `t3.medium` nodes. Confirm that the selected Kubernetes version is supported in the target region before deployment. Copy [`terraform/eks/terraform.tfvars.example`](./terraform/eks/terraform.tfvars.example) to an untracked `terraform.tfvars` file for custom sizing, networking, or endpoint access.
+Terraform defaults to the `makrsoft-eks` cluster name, Kubernetes `1.35`, three AZs, and two `t3.micro` nodes. `t3.micro` is a small instance with limited capacity; use a larger instance type if your AWS account permits it and your workloads need more resources. Confirm that the selected Kubernetes version is supported in the target region before deployment. Copy [`terraform/eks/terraform.tfvars.example`](./terraform/eks/terraform.tfvars.example) to an untracked `terraform.tfvars` file for custom sizing, networking, or endpoint access.
 
 After deployment, the output `configure_kubectl` shows the `aws eks update-kubeconfig` command. Use AWS credentials for an IAM principal with EKS access. The default private-only endpoint is reachable only from the VPC or a connected network.

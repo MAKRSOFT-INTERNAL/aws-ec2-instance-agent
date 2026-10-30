@@ -46,7 +46,7 @@ variable "availability_zone_count" {
 variable "node_instance_types" {
   description = "EC2 instance types used by the managed node group."
   type        = list(string)
-  default     = ["t3.medium"]
+  default     = ["t3.micro"]
 
   validation {
     condition     = length(var.node_instance_types) > 0

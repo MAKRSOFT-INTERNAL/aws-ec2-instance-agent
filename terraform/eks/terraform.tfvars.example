@@ -4,7 +4,7 @@ kubernetes_version     = "1.35"
 vpc_cidr               = "10.42.0.0/16"
 availability_zone_count = 3
 
-node_instance_types = ["t3.medium"]
+node_instance_types = ["t3.micro"]
 node_min_size       = 2
 node_desired_size   = 2
 node_max_size       = 3
