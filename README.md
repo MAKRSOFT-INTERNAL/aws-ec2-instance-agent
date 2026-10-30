@@ -62,13 +62,12 @@ Bootstrap uses local Terraform state because it creates the remote state bucket 
 The [`Terraform EKS` workflow](./.github/workflows/terraform.yml):
 
 - Runs formatting and Terraform validation on pull requests and pushes to `main`. These checks do not receive AWS credentials.
-- Runs a saved Terraform plan only when manually dispatched from `main`.
-- Applies that saved plan only after the `production` environment approval.
+- On pushes to `main`, creates a saved Terraform plan and automatically applies it without an environment approval. Manual dispatch from `main` does the same.
 - Uses the OIDC role and the S3 backend with native S3 lock files.
 
-To deploy, open **Actions → Terraform EKS → Run workflow** and select `main`. Review the plan in the run, then approve the `production` deployment when ready. The saved plan artifact is retained for one day.
+Any push to `main` that changes Terraform, the module, or this workflow can provision, update, or destroy AWS resources according to the plan. Review the plan printed in the workflow logs and protect `main` with required pull-request reviews before enabling this behavior. To manually run the deployment, open **Actions → Terraform EKS → Run workflow** and select `main`. The saved plan artifact is retained for one day.
 
-The IAM trust policy only permits the GitHub subject for `main` and the `production` environment. Do not broaden it to arbitrary branches or pull requests. The workflow currently pins Terraform CLI to `1.10.5`.
+The IAM trust policy permits the GitHub subject for `main` and (if still configured in the bootstrap stack) the `production` environment. This workflow uses the `main` branch subject and does not require the environment. Do not broaden the trust to arbitrary branches or pull requests. The workflow currently pins Terraform CLI to `1.10.5`.
 
 The workflow reads optional repository **Actions variables** for deployment settings. If unset, Terraform uses the defaults shown:
 

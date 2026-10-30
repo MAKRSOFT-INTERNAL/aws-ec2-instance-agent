@@ -46,7 +46,7 @@ jobs:
 
   plan:
     name: Plan EKS deployment
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: validate
     runs-on: ubuntu-latest
     permissions:
@@ -105,11 +105,10 @@ jobs:
           retention-days: 1
 
   apply:
-    name: Apply approved EKS plan
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    name: Auto-apply saved EKS plan
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: plan
     runs-on: ubuntu-latest
-    environment: production
     permissions:
       contents: read
       id-token: write
