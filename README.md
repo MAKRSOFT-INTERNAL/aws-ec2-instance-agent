@@ -25,6 +25,8 @@ The GitHub deployment role that creates the cluster receives the EKS creator's c
 
 The bootstrap needs an AWS identity with permissions to create IAM OIDC providers/roles and an S3 bucket. Use a short-lived AWS SSO session or another approved administrative identity; do not put AWS credentials in this repository.
 
+Before `terraform init`, the EKS plan job uses the configured AWS credentials to create `makrosft-tfstate-s3` if it does not exist, then enables S3 public-access blocking, versioning, and encryption. S3 bucket names are globally unique; if another account already owns this name, choose a different `TF_STATE_BUCKET`. The credentials need permission to create and configure the bucket.
+
 1. Choose an unused, globally unique S3 bucket name for Terraform state.
 2. If the AWS account already has the GitHub Actions OIDC provider, pass its ARN as `existing_github_oidc_provider_arn` to avoid trying to create a duplicate provider.
 3. Initialize the bootstrap Terraform configuration:
@@ -69,6 +71,8 @@ The workflow uses the IAM user's permissions directly; it does not use `GitHubAc
 Bootstrap uses local Terraform state because it creates the remote state bucket itself. Keep that state in a protected location. Re-running bootstrap later requires that local state.
 
 ## CI/CD workflow
+
+The plan job creates the configured S3 state bucket if needed and secures it before Terraform initializes the backend. The IAM credentials need S3 permissions to create/configure that bucket and subsequently access its state. If bucket creation fails with `BucketAlreadyExists`, the globally unique name is owned by someone else; choose a different `TF_STATE_BUCKET`. If Terraform still reports `NoSuchBucket`, check the create-bucket step and ensure plan and apply use the same bucket and AWS account.
 
 The [`Terraform EKS` workflow](./.github/workflows/terraform.yml):
 
