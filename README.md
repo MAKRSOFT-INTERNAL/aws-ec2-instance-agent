@@ -1,6 +1,6 @@
 # EKS on AWS with GitHub Actions OIDC
 
-This repository provisions an Amazon EKS cluster and managed EC2 worker nodes in `ap-southeast-2`. GitHub Actions authenticates to AWS using OpenID Connect (OIDC); no long-lived AWS access keys are stored in GitHub.
+This repository provisions an Amazon EKS cluster and managed EC2 worker nodes in `ap-southeast-2`. GitHub Actions authenticates to AWS through OIDC and assumes the repository-scoped deployment role created by the Terraform bootstrap. No AWS access keys are stored in GitHub.
 
 ## What is provisioned
 
@@ -44,7 +44,7 @@ The bootstrap needs an AWS identity with permissions to create IAM OIDC provider
    ```
 
 4. Record the outputs `deployment_role_arn` and `state_bucket_name`.
-5. In the GitHub repository settings, add these **Actions variables**:
+5. In GitHub Actions settings, add these **Actions variables**:
 
    | Variable | Value |
    | --- | --- |
@@ -52,8 +52,8 @@ The bootstrap needs an AWS identity with permissions to create IAM OIDC provider
    | `AWS_REGION` | `ap-southeast-2` |
    | `TF_STATE_BUCKET` | Bootstrap output `state_bucket_name` |
 
-6. Create a GitHub Actions environment named `production`. Configure required reviewers so the apply job pauses for approval, and restrict its deployment branches to `main`. Protect `main` against unreviewed changes because the OIDC role trusts that branch and environment.
-7. Review the inline IAM policy in [`terraform/bootstrap/main.tf`](./terraform/bootstrap/main.tf). By default it is restricted to this repository's `main` branch or the `production` environment, one AWS region, the state bucket, the `makrsoft-eks` cluster, and IAM roles with the `makrsoft-eks-` prefix. VPC/networking EC2 API actions are region-wide because the APIs operate across related VPC, subnet, route-table, internet-gateway, and NAT resources; use a dedicated AWS account or further review/tag-scope those permissions before deploying into an account with other networking workloads. If you change the cluster name, use the same value in bootstrap and the EKS deployment and set `resource_name_prefix` to match the generated IAM role names.
+6. Configure the deployment role's trust relationship to allow GitHub's OIDC provider (`token.actions.githubusercontent.com`) with audience `sts.amazonaws.com` and subject `repo:MAKRSOFT-INTERNAL/aws-ec2-instance-agent:ref:refs/heads/main`. The bootstrap configures this trust when it creates the role. Protect `main` against unreviewed changes.
+7. The bootstrap-created role has a scoped inline policy for the state bucket, the configured EKS cluster, and its related resources. Do not set `AWS_DEPLOY_ROLE_ARN` to the console-created `GitHubActionsWorkflowRole` shown in the screenshot while it has `AdministratorAccess`; that policy grants broad account-wide permissions. The workflow should use the `deployment_role_arn` bootstrap output.
 
 Bootstrap uses local Terraform state because it creates the remote state bucket itself. Keep that state in a protected location. Re-running bootstrap later requires that local state.
 
@@ -63,11 +63,11 @@ The [`Terraform EKS` workflow](./.github/workflows/terraform.yml):
 
 - Runs formatting and Terraform validation on pull requests and pushes to `main`. These checks do not receive AWS credentials.
 - On pushes to `main`, creates a saved Terraform plan and automatically applies it without an environment approval. Manual dispatch from `main` does the same.
-- Uses the OIDC role and the S3 backend with native S3 lock files.
+- Assumes the AWS role through GitHub OIDC and uses the S3 backend with native S3 lock files.
 
 Any push to `main` that changes Terraform, the module, or this workflow can provision, update, or destroy AWS resources according to the plan. Review the plan printed in the workflow logs and protect `main` with required pull-request reviews before enabling this behavior. To manually run the deployment, open **Actions → Terraform EKS → Run workflow** and select `main`. The saved plan artifact is retained for one day.
 
-The IAM trust policy permits the GitHub subject for `main` and (if still configured in the bootstrap stack) the `production` environment. This workflow uses the `main` branch subject and does not require the environment. Do not broaden the trust to arbitrary branches or pull requests. The workflow currently pins Terraform CLI to `1.10.5`.
+The AWS role trust policy must permit the GitHub subject for `main`; this workflow does not require an environment. Do not broaden the trust to arbitrary branches or pull requests. The workflow currently pins Terraform CLI to `1.10.5`.
 
 The workflow reads optional repository **Actions variables** for deployment settings. If unset, Terraform uses the defaults shown:
 
@@ -85,7 +85,7 @@ The workflow reads optional repository **Actions variables** for deployment sett
 | `EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS` | `[]` | JSON list of trusted CIDRs |
 | `EKS_CLUSTER_ADMIN_IAM_ROLE_ARN` | empty | Optional IAM role to grant cluster-admin |
 
-Set `AWS_REGION` to `ap-southeast-2`, `AWS_DEPLOY_ROLE_ARN` to the bootstrap role output, and `TF_STATE_BUCKET` to the bootstrap bucket output. Keep the region the same as the bootstrap region. Configure the optional `EKS_*` variables at the repository level so the plan and protected apply job receive the same values. Local `terraform.tfvars` files are ignored by Git and are not used by GitHub Actions.
+Set `AWS_DEPLOY_ROLE_ARN` and `TF_STATE_BUCKET` to their bootstrap outputs and `AWS_REGION` to `ap-southeast-2`. Keep the region the same as the bootstrap region. Configure the optional `EKS_*` variables at the repository level so the plan and apply jobs receive the same values. Local `terraform.tfvars` files are ignored by Git and are not used by GitHub Actions.
 
 ## Local Terraform commands
 

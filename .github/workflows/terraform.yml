@@ -81,6 +81,9 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+          role-session-name: GitHubActions-${{ github.run_id }}
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
       - name: Initialize Terraform
         working-directory: terraform/eks
         env:
@@ -141,6 +144,9 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+          role-session-name: GitHubActions-${{ github.run_id }}
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
       - uses: actions/download-artifact@v4
         with:
           name: eks-terraform-plan
