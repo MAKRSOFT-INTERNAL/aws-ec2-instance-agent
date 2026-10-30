@@ -125,6 +125,33 @@ jobs:
             -backend-config="region=$AWS_REGION" \
             -backend-config="encrypt=true" \
             -backend-config="use_lockfile=true"
+      - name: Import existing EKS access entry if needed
+        working-directory: terraform/eks
+        env:
+          CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'makrsoft-eks' }}
+          PRINCIPAL_ARN: ${{ vars.EKS_CLUSTER_VIEW_IAM_PRINCIPAL_ARN || 'arn:aws:iam::783161622588:user/makrsoft-admin' }}
+        run: |
+          set -euo pipefail
+          resource_address="module.eks.aws_eks_access_entry.cluster_view"
+          if terraform state list | grep -Fqx "$resource_address"; then
+            echo "EKS access entry is already managed in Terraform state."
+            exit 0
+          fi
+
+          error_file="$(mktemp)"
+          trap 'rm -f "$error_file"' EXIT
+          if aws eks describe-access-entry \
+            --cluster-name "$CLUSTER_NAME" \
+            --principal-arn "$PRINCIPAL_ARN" >/dev/null 2>"$error_file"; then
+            terraform import -input=false \
+              "$resource_address" \
+              "$CLUSTER_NAME:$PRINCIPAL_ARN"
+          elif grep -q "ResourceNotFoundException" "$error_file"; then
+            echo "No existing access entry found; Terraform will create it."
+          else
+            cat "$error_file" >&2
+            exit 1
+          fi
       - name: Create and display saved plan
         working-directory: terraform/eks
         run: |
