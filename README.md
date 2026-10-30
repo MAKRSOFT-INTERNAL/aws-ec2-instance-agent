@@ -1,6 +1,6 @@
 # EKS on AWS with GitHub Actions OIDC
 
-This repository provisions an Amazon EKS cluster and managed EC2 worker nodes in `ap-southeast-2`. GitHub Actions authenticates to AWS through OIDC and assumes the repository-scoped deployment role created by the Terraform bootstrap. No AWS access keys are stored in GitHub.
+This repository provisions an Amazon EKS cluster and managed EC2 worker nodes in `ap-southeast-2`. GitHub Actions authenticates through OIDC and assumes the existing `GitHubActionsWorkflowRole`. No AWS access keys are stored in GitHub.
 
 ## What is provisioned
 
@@ -27,33 +27,43 @@ The bootstrap needs an AWS identity with permissions to create IAM OIDC provider
 
 1. Choose an unused, globally unique S3 bucket name for Terraform state.
 2. If the AWS account already has the GitHub Actions OIDC provider, pass its ARN as `existing_github_oidc_provider_arn` to avoid trying to create a duplicate provider.
-3. Run:
+3. Initialize the bootstrap Terraform configuration:
 
    ```sh
    cd terraform/bootstrap
    terraform init
-   terraform apply \
-     -var='aws_region=ap-southeast-2' \
-     -var='state_bucket_name=replace-with-a-globally-unique-name'
    ```
 
-   To use an existing provider, add:
+4. Set the bootstrap variables in the same shell. The bootstrap creates a separate, least-privilege EKS deployment role; it does not modify the existing `GitHubActionsWorkflowRole` used by the current POC workflow.
 
    ```sh
-   -var='existing_github_oidc_provider_arn=arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com'
+   export TF_VAR_aws_region=ap-southeast-2
+   export TF_VAR_state_bucket_name='makrosft-tfstate-s3'
+   export TF_VAR_existing_github_oidc_provider_arn='arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com'
    ```
 
-4. Record the outputs `deployment_role_arn` and `state_bucket_name`.
-5. In GitHub Actions settings, add these **Actions variables**:
+   S3 bucket names are globally unique. If `makrosft-tfstate-s3` is unavailable or already belongs to another account, choose another name and use it consistently for bootstrap and GitHub Actions.
+
+5. Run and review the bootstrap plan before applying. The bootstrap manages its own separate role (`github-eks-terraform-deploy`) and state bucket; it does not replace or change `GitHubActionsWorkflowRole`.
+
+   ```sh
+   terraform plan -out=bootstrap.tfplan
+   terraform show bootstrap.tfplan
+   terraform apply bootstrap.tfplan
+   ```
+
+6. Record the output `state_bucket_name`. The workflow defaults to the existing `GitHubActionsWorkflowRole`; its role ARN can be overridden with the Actions variable below.
+7. Optionally add these repository-level **Actions variables** to override the workflow defaults:
 
    | Variable | Value |
    | --- | --- |
-   | `AWS_DEPLOY_ROLE_ARN` | Bootstrap output `deployment_role_arn` |
+   | `AWS_RUNNER_ROLE_ARN` | `arn:aws:iam::783161622588:role/GitHubActionsWorkflowRole` (the workflow default; overridden by this variable) |
    | `AWS_REGION` | `ap-southeast-2` |
-   | `TF_STATE_BUCKET` | Bootstrap output `state_bucket_name` |
+   | `TF_STATE_BUCKET` | `makrosft-tfstate-s3` (must match bootstrap output `state_bucket_name`) |
 
-6. Configure the deployment role's trust relationship to allow GitHub's OIDC provider (`token.actions.githubusercontent.com`) with audience `sts.amazonaws.com` and subject `repo:MAKRSOFT-INTERNAL/aws-ec2-instance-agent:ref:refs/heads/main`. The bootstrap configures this trust when it creates the role. Protect `main` against unreviewed changes.
-7. The bootstrap-created role has a scoped inline policy for the state bucket, the configured EKS cluster, and its related resources. Do not set `AWS_DEPLOY_ROLE_ARN` to the console-created `GitHubActionsWorkflowRole` shown in the screenshot while it has `AdministratorAccess`; that policy grants broad account-wide permissions. The workflow should use the `deployment_role_arn` bootstrap output.
+8. Protect `main` against unreviewed changes. The workflow assumes the role only for pushes or manual runs on `main`.
+
+The existing `GitHubActionsWorkflowRole` currently has `AdministratorAccess`, which can change or delete resources across the AWS account. This is broad access, even for a POC. The workflow only assumes the role; neither the workflow nor the bootstrap replaces that role. Its trust relationship must allow GitHub's OIDC provider (`token.actions.githubusercontent.com`), audience `sts.amazonaws.com`, and subject `repo:MAKRSOFT-INTERNAL/aws-ec2-instance-agent:ref:refs/heads/main`.
 
 Bootstrap uses local Terraform state because it creates the remote state bucket itself. Keep that state in a protected location. Re-running bootstrap later requires that local state.
 
@@ -85,7 +95,7 @@ The workflow reads optional repository **Actions variables** for deployment sett
 | `EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS` | `[]` | JSON list of trusted CIDRs |
 | `EKS_CLUSTER_ADMIN_IAM_ROLE_ARN` | empty | Optional IAM role to grant cluster-admin |
 
-Set `AWS_DEPLOY_ROLE_ARN` and `TF_STATE_BUCKET` to their bootstrap outputs and `AWS_REGION` to `ap-southeast-2`. Keep the region the same as the bootstrap region. Configure the optional `EKS_*` variables at the repository level so the plan and apply jobs receive the same values. Local `terraform.tfvars` files are ignored by Git and are not used by GitHub Actions.
+The workflow defaults `AWS_RUNNER_ROLE_ARN` to `arn:aws:iam::783161622588:role/GitHubActionsWorkflowRole` and `TF_STATE_BUCKET` to `makrosft-tfstate-s3`; set repository-level Actions variables with those names only if you need to override these defaults. Confirm the bucket exists in the account and region used by the bootstrap. Set `AWS_REGION` to `ap-southeast-2` and keep it consistent with the bootstrap region. Configure optional `EKS_*` variables at the repository level so plan and apply receive the same values. Local `terraform.tfvars` files are ignored by Git and are not used by GitHub Actions.
 
 ## Local Terraform commands
 

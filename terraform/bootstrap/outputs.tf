@@ -1,5 +1,5 @@
 output "deployment_role_arn" {
-  description = "Configure as the GitHub Actions AWS_DEPLOY_ROLE_ARN repository variable."
+  description = "Configure as the GitHub Actions AWS_RUNNER_ROLE_ARN variable."
   value       = aws_iam_role.github_deploy.arn
 }
 

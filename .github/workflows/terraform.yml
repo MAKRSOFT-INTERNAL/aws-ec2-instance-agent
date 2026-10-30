@@ -53,6 +53,8 @@ jobs:
       contents: read
       id-token: write
     env:
+      AWS_RUNNER_ROLE_ARN: ${{ vars.AWS_RUNNER_ROLE_ARN || 'arn:aws:iam::783161622588:role/GitHubActionsWorkflowRole' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'makrosft-tfstate-s3' }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
       TF_VAR_cluster_name: ${{ vars.EKS_CLUSTER_NAME || 'makrsoft-eks' }}
       TF_VAR_kubernetes_version: ${{ vars.EKS_KUBERNETES_VERSION || '1.35' }}
@@ -71,15 +73,12 @@ jobs:
         with:
           terraform_version: 1.10.5
       - name: Validate deployment configuration
-        env:
-          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
         run: |
-          test -n "$AWS_DEPLOY_ROLE_ARN"
+          test -n "$AWS_RUNNER_ROLE_ARN"
           test -n "$TF_STATE_BUCKET"
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_RUNNER_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
           role-session-name: GitHubActions-${{ github.run_id }}
       - name: Verify AWS identity
@@ -87,7 +86,6 @@ jobs:
       - name: Initialize Terraform
         working-directory: terraform/eks
         env:
-          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
           AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
         run: |
           terraform init -input=false \
@@ -116,6 +114,8 @@ jobs:
       contents: read
       id-token: write
     env:
+      AWS_RUNNER_ROLE_ARN: ${{ vars.AWS_RUNNER_ROLE_ARN || 'arn:aws:iam::783161622588:role/GitHubActionsWorkflowRole' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'makrosft-tfstate-s3' }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
       TF_VAR_cluster_name: ${{ vars.EKS_CLUSTER_NAME || 'makrsoft-eks' }}
       TF_VAR_kubernetes_version: ${{ vars.EKS_KUBERNETES_VERSION || '1.35' }}
@@ -134,15 +134,12 @@ jobs:
         with:
           terraform_version: 1.10.5
       - name: Validate deployment configuration
-        env:
-          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
         run: |
-          test -n "$AWS_DEPLOY_ROLE_ARN"
+          test -n "$AWS_RUNNER_ROLE_ARN"
           test -n "$TF_STATE_BUCKET"
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_RUNNER_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
           role-session-name: GitHubActions-${{ github.run_id }}
       - name: Verify AWS identity
@@ -154,7 +151,6 @@ jobs:
       - name: Initialize Terraform
         working-directory: terraform/eks
         env:
-          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
           AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
         run: |
           terraform init -input=false \

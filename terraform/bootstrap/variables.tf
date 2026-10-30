@@ -7,6 +7,7 @@ variable "aws_region" {
 variable "state_bucket_name" {
   description = "Globally unique S3 bucket name for the EKS Terraform state."
   type        = string
+  default     = "makrosft-tfstate-s3"
 
   validation {
     condition     = length(var.state_bucket_name) >= 3 && length(var.state_bucket_name) <= 63
