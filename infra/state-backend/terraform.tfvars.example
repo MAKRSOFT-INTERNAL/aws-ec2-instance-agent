@@ -1,3 +1,0 @@
-aws_region        = "ap-southeast-2"
-aws_account_id    = "783161622588"
-state_bucket_name = "makrsoft-terraform-state-s3-783161622588"

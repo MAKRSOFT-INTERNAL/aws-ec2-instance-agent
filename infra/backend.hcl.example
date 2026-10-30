@@ -1,5 +1,0 @@
-bucket         = "makrsoft-terraform-state-s3-783161622588"
-key            = "aws-ec2-instance-agent/terraform.tfstate"
-region         = "ap-southeast-2"
-dynamodb_table = "makrsoft-terraform-state-s3-783161622588-lock"
-encrypt        = true
